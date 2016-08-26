@@ -27,6 +27,11 @@
 
 #include "options.h"
 
+struct CommandCall {
+    QString binary;
+    QStringList args;
+};
+
 namespace Ui {
 class Start;
 }
@@ -84,6 +89,10 @@ public slots:
     void on_wordlistsLeft_clicked();
     void on_wordlistsRight_clicked();
 
+    void on_addToQueue_clicked();
+    void on_queueClear_clicked();
+    void on_queueStart_clicked();
+
 private:
     Ui::Start *ui;
     Options opts;
@@ -94,9 +103,14 @@ private:
     void errMsg(QString title, QString msg);
     void updateWordlists();
 
+    CommandCall prepareCommand();
+    void startNextQueue();
+
     QProcess *prg;
     QTimer prgTimer;
     bool running;
+    bool queueIsRunning;
+    int queueIndex;
     bool inprg;
 };
 

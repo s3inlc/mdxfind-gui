@@ -72,6 +72,7 @@ Start::Start(QWidget *parent) : QMainWindow(parent), ui(new Ui::Start){
 
     block = false;
     running = false;
+    queueIsRunning = false;
     prg = NULL;
 }
 
@@ -111,6 +112,58 @@ void Start::on_wordlistsRight_clicked(){
     }
     opts.setOption("wordlistsno", wordlists.join(";"));
     updateWordlists();
+}
+
+void Start::on_addToQueue_clicked(){
+    CommandCall call = prepareCommand();
+    if(call.binary.length() == 0){
+        return;
+    }
+
+    ui->queue->addItem(call.binary + "\n" + call.args.join(" "));
+}
+
+void Start::on_queueClear_clicked(){
+    ui->queue->clear();
+}
+
+void Start::on_queueStart_clicked(){
+    if(ui->queue->size().height() == 0){
+        qDebug() << "Queue is empty!";
+        return;
+    }
+    else if(running){
+        errMsg("Cannot run Queue", "You cannot run the queue when there is a single process running!");
+        return;
+    }
+    else if(queueIsRunning){
+        queueIsRunning = false;
+        prg->kill();
+        ui->queueStart->setText("Process queue");
+        return;
+    }
+    queueIsRunning = true;
+    ui->queueStart->setText("Abort processing");
+
+    queueIndex = 0;
+    QStringList split = ui->queue->itemAt(QPoint(0, queueIndex))->text().split("\n");
+    CommandCall call;
+    call.binary = split.at(0);
+    call.args = split.at(1).split(" ");
+
+    delete prg;
+    prg = new QProcess(this);
+    connect(prg, SIGNAL(finished(int)), this, SLOT(prgFinished(int)));
+    connect(prg, SIGNAL(readyReadStandardError()), this, SLOT(prgUpdate()));
+    if(ui->setSaveFounds->isChecked()){
+        prg->setStandardOutputFile(ui->saveFounds->text(), QIODevice::Append);
+    }
+    prg->start(call.binary, call.args);
+    qDebug() << "Start MDXfind:" << call.binary << call.args.join(" ");
+    ui->statusBar->showMessage("MDXfind is running...");
+
+    inprg = false;
+    ui->info->clear();
 }
 
 void Start::on_wordlistsRemove_clicked(){
@@ -165,25 +218,7 @@ void Start::updateWordlists(){
     }
 }
 
-void Start::on_wordlistsAdd_clicked(){
-    QStringList paths = QFileDialog::getOpenFileNames(this, "Select wordlist(s)");
-    if(paths.size() == 0){
-        return;
-    }
-    for(int x=0;x<paths.size();x++){
-        opts.setOption("wordlistsno", opts.getOption("wordlistsno") + paths.at(x) + ";");
-    }
-    updateWordlists();
-}
-
-void Start::on_startProcess_clicked(){
-    if(running){
-        running = false;
-        ui->info->append("MDXfind aborted!!\n");
-        prg->kill();
-        return;
-    }
-
+CommandCall Start::prepareCommand(){
     QString errors = "<b>There were some errors in your configuration!</b><br><br>";
     bool error = false;
     if(ui->hashFile->text().length() == 0){
@@ -246,7 +281,9 @@ void Start::on_startProcess_clicked(){
 
     if(error){
         errMsg("Configuration Error!", errors);
-        return;
+        CommandCall c;
+        c.binary = "";
+        return c;
     }
 
     QString command = ui->mdxfindLocation->text();
@@ -300,6 +337,59 @@ void Start::on_startProcess_clicked(){
     for(int x=0;x<ui->wordlistsYes->count();x++){
         args.append(ui->wordlistsYes->item(x)->text());
     }
+    CommandCall call;
+    call.binary = command;
+    call.args = args;
+    return call;
+}
+
+void Start::startNextQueue(){
+    queueIndex++;
+    if(queueIndex >= ui->queue->size().height()){
+        qDebug() << "Queue processing finished!";
+        queueIsRunning = false;
+        return;
+    }
+    QStringList split = ui->queue->itemAt(QPoint(0, queueIndex))->text().split("\n");
+    CommandCall call;
+    call.binary = split.at(0);
+    call.args = split.at(1).split(" ");
+
+    delete prg;
+    prg = new QProcess(this);
+    connect(prg, SIGNAL(finished(int)), this, SLOT(prgFinished(int)));
+    connect(prg, SIGNAL(readyReadStandardError()), this, SLOT(prgUpdate()));
+    if(ui->setSaveFounds->isChecked()){
+        prg->setStandardOutputFile(ui->saveFounds->text(), QIODevice::Append);
+    }
+    prg->start(call.binary, call.args);
+    qDebug() << "Start MDXfind:" << call.binary << call.args.join(" ");
+    ui->statusBar->showMessage("MDXfind is running...");
+}
+
+void Start::on_wordlistsAdd_clicked(){
+    QStringList paths = QFileDialog::getOpenFileNames(this, "Select wordlist(s)");
+    if(paths.size() == 0){
+        return;
+    }
+    for(int x=0;x<paths.size();x++){
+        opts.setOption("wordlistsno", opts.getOption("wordlistsno") + paths.at(x) + ";");
+    }
+    updateWordlists();
+}
+
+void Start::on_startProcess_clicked(){
+    if(running){
+        running = false;
+        ui->info->append("MDXfind aborted!!\n");
+        prg->kill();
+        return;
+    }
+
+    CommandCall call = prepareCommand();
+    if(call.binary.length() == 0){
+        return;
+    }
 
     delete prg;
     prg = new QProcess(this);
@@ -309,8 +399,8 @@ void Start::on_startProcess_clicked(){
     if(ui->setSaveFounds->isChecked()){
         prg->setStandardOutputFile(ui->saveFounds->text(), QIODevice::Append);
     }
-    prg->start(command, args);
-    qDebug() << "Start MDXfind:" << command << args.join(" ");
+    prg->start(call.binary, call.args);
+    qDebug() << "Start MDXfind:" << call.binary << call.args.join(" ");
     ui->statusBar->showMessage("MDXfind is running...");
     ui->startProcess->setText("Abort");
     inprg = false;
@@ -322,7 +412,7 @@ void Start::errMsg(QString title, QString msg){
 }
 
 void Start::prgUpdate(){
-    if(!running){
+    if(!running || !queueIsRunning){
         return;
     }
     QString msg = prg->readAllStandardError();
@@ -348,6 +438,7 @@ void Start::prgUpdate(){
 
 void Start::prgFinished(int code){
     if(ui->setClean->isChecked()){
+#ifndef WIN_32
         qDebug() << "Start left/found cleaning...";
         QString base = ui->setCleanPath->text();
         QString found = base + "_f.txt";
@@ -362,12 +453,18 @@ void Start::prgFinished(int code){
         system(QString("comm -23 '" + app + "/tmp234_l_s.txt' '" + app + "/tmp234_f_h.txt' > " + left).toStdString().c_str());
         system(QString("rm '" + app + "/tmp234_l_s.txt' '" + app + "/tmp234_f_h.txt' '" + app + "/tmp234_f_s.txt'").toStdString().c_str());
         qDebug() << "Left/found cleaning done!";
+#endif
     }
 
 
-    ui->startProcess->setText("Start");
-    running = false;
     ui->statusBar->showMessage("MDXfind finished! - Code: " + QString::number(code));
+    if(running){
+        ui->startProcess->setText("Start");
+        running = false;
+    }
+    else{
+        startNextQueue();
+    }
 }
 
 bool Start::validPath(QString path){
