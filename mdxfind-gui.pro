@@ -4,9 +4,7 @@
 # https://github.com/s3inlc/hashes-org-mgmt/tree/master/MDXfind-GUI
 #
 
-QT       += core gui
-
-greaterThan(QT_MAJOR_VERSION, 4): QT += widgets
+QT       += core gui widgets
 
 TARGET = mdxfind-gui
 TEMPLATE = app
