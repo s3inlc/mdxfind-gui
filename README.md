@@ -1,5 +1,7 @@
 # MDXfind GUI
 
+[![Travis build status](https://travis-ci.org/s3inlc/mdxfind-gui.svg?branch=master)](https://travis-ci.org/s3inlc/mdxfind-gui)
+
 This code was running successfully on Linux, for Windows some of the system calls perhaps need to be adapted, but the normal code should run there too.
 
 ### Building MDXfind GUI
